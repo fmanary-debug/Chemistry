@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chart of Stable Nuclides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    --bg: #EEF2F0;
+    --surface: #FFFFFF;
+    --ink: #16233A;
+    --muted: #5B6B7A;
+    --grid: #D7DEDB;
+    --grid-strong: #BFC9C5;
+    --accent: #2E7A6E;
+    --stable: #16233A;
+    --stable-hover: #0B1220;
+    --radioactive: #C9832C;
+    --common: #1F7A52;
+    --highlight: #6A4C93;
+    --border: #C7D0CC;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F171F;
+      --surface: #15202A;
+      --ink: #E7ECEF;
+      --muted: #90A0AA;
+      --grid: #223039;
+      --grid-strong: #2C3D47;
+      --accent: #4FA396;
+      --stable: #E7ECEF;
+      --stable-hover: #FFFFFF;
+      --radioactive: #E3A94D;
+      --common: #5FBF8F;
+      --highlight: #A585CF;
+      --border: #2A3B45;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0F171F;
+    --surface: #15202A;
+    --ink: #E7ECEF;
+    --muted: #90A0AA;
+    --grid: #223039;
+    --grid-strong: #2C3D47;
+    --accent: #4FA396;
+    --stable: #E7ECEF;
+    --stable-hover: #FFFFFF;
+    --radioactive: #E3A94D;
+    --common: #5FBF8F;
+    --highlight: #A585CF;
+    --border: #2A3B45;
+  }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Archivo', system-ui, sans-serif;
+    overflow: hidden;
+  }
+  * { -webkit-tap-highlight-color: transparent; }
+  #app { display: flex; flex-direction: column; height: 100%; }
+
+  header {
+    flex: 0 0 auto;
+    padding: 14px 18px 12px calc(18px + env(safe-area-inset-left, 0px));
+    padding-right: calc(18px + env(safe-area-inset-right, 0px));
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .title-block h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+  .title-block p {
+    margin: 3px 0 0;
+    font-size: 12.5px;
+    color: var(--muted);
+    max-width: 46ch;
+    line-height: 1.4;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  #search {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    width: 170px;
+    outline: none;
+  }
+  #search:focus { border-color: var(--accent); }
+  .btn {
+    font-family: 'Archivo', sans-serif;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 11px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--accent); }
+  #searchStatus {
+    font-size: 11.5px;
+    color: var(--muted);
+    min-height: 14px;
+    width: 100%;
+    order: 10;
+  }
+
+  #stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    touch-action: none;
+    cursor: grab;
+  }
+  #stage.grabbing { cursor: grabbing; }
+  svg#chart { display: block; width: 100%; height: 100%; }
+
+  .nuclide { cursor: pointer; }
+  .nuclide.stable { fill: var(--stable); }
+  .nuclide.radioactive { fill: var(--radioactive); }
+  .nuclide.common { fill: var(--common); }
+  .nuclide:hover, .nuclide.hovered { stroke: var(--highlight); stroke-width: 2.5; }
+  .nuclide.matched { stroke: var(--highlight); stroke-width: 3; }
+  .nuclide.dim { opacity: 0.18; }
+
+  .axislabel { font-family: 'IBM Plex Mono', monospace; fill: var(--muted); }
+  .elemlabel { font-family: 'IBM Plex Mono', monospace; fill: var(--ink); font-weight: 500; }
+  .bandline { stroke: var(--highlight); stroke-dasharray: 7 5; stroke-width: 1.4; opacity: 0.6; fill: none; }
+  .bandlabel { font-family: 'IBM Plex Mono', monospace; fill: var(--highlight); opacity: 0.9; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .axisline { stroke: var(--grid-strong); stroke-width: 1.2; }
+
+  #tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    display: none;
+    z-index: 20;
+    max-width: 220px;
+    line-height: 1.5;
+  }
+  #tooltip .iso-name { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 13.5px; display:block; margin-bottom:2px; }
+  #tooltip .tag {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 10.5px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    color: #fff;
+  }
+
+  #legend {
+    position: absolute;
+    left: calc(14px + env(safe-area-inset-left, 0px));
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.8;
+    z-index: 15;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+  }
+  #legend .row { display: flex; align-items: center; gap: 7px; }
+  #legend .sw { width: 11px; height: 11px; border-radius: 2px; flex: 0 0 auto; }
+  #legend .sw.stable { background: var(--stable); }
+  #legend .sw.radioactive { background: var(--radioactive); }
+  #legend .sw.common { background: var(--common); }
+  #legend .sw.band { background: none; border-top: 2px dashed var(--highlight); height:0; width:14px; }
+
+  #zoomctl {
+    position: absolute;
+    right: calc(14px + env(safe-area-inset-right, 0px));
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 15;
+  }
+  #zoomctl button {
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 17px;
+    cursor: pointer;
+    font-family: 'Archivo', sans-serif;
+  }
+
+  @media (max-width: 640px) {
+    .title-block p { display: none; }
+    #search { width: 120px; }
+    header { padding: 10px 12px; }
+    #legend { font-size: 10.5px; padding: 8px 9px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title-block">
+      <h1>Chart of Stable Nuclides</h1>
+      <p>Protons (Z) across, neutrons (N) up. Scroll or pinch to zoom, drag to pan, tap a point to look it up.</p>
+    </div>
+    <div class="controls">
+      <input id="search" type="text" placeholder="e.g. carbon-13, 56Fe, gold" autocomplete="off" spellcheck="false">
+      <button class="btn" id="fitBtn">Fit view</button>
+      <div id="searchStatus"></div>
+    </div>
+  </header>
+  <div id="stage">
+    <svg id="chart" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="tooltip"></div>
+    <div id="legend">
+      <div class="row"><span class="sw stable"></span> stable nuclide</div>
+      <div class="row"><span class="sw radioactive"></span> radioactive nuclide</div>
+      <div class="row"><span class="sw common"></span> most abundant stable isotope of the element</div>
+      <div class="row"><span class="sw band"></span> N&#8202;=&#8202;Z</div>
+    </div>
+    <div id="zoomctl">
+      <button id="zoomIn">+</button>
+      <button id="zoomOut">&minus;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Element table (Z: [symbol, name]) ----------
+  var ELEMENTS = {
+    1:["H","Hydrogen"],2:["He","Helium"],3:["Li","Lithium"],4:["Be","Beryllium"],5:["B","Boron"],
+    6:["C","Carbon"],7:["N","Nitrogen"],8:["O","Oxygen"],9:["F","Fluorine"],10:["Ne","Neon"],
+    11:["Na","Sodium"],12:["Mg","Magnesium"],13:["Al","Aluminum"],14:["Si","Silicon"],15:["P","Phosphorus"],
+    16:["S","Sulfur"],17:["Cl","Chlorine"],18:["Ar","Argon"],19:["K","Potassium"],20:["Ca","Calcium"],
+    21:["Sc","Scandium"],22:["Ti","Titanium"],23:["V","Vanadium"],24:["Cr","Chromium"],25:["Mn","Manganese"],
+    26:["Fe","Iron"],27:["Co","Cobalt"],28:["Ni","Nickel"],29:["Cu","Copper"],30:["Zn","Zinc"],
+    31:["Ga","Gallium"],32:["Ge","Germanium"],33:["As","Arsenic"],34:["Se","Selenium"],35:["Br","Bromine"],
+    36:["Kr","Krypton"],37:["Rb","Rubidium"],38:["Sr","Strontium"],39:["Y","Yttrium"],40:["Zr","Zirconium"],
+    41:["Nb","Niobium"],42:["Mo","Molybdenum"],43:["Tc","Technetium"],44:["Ru","Ruthenium"],45:["Rh","Rhodium"],
+    46:["Pd","Palladium"],47:["Ag","Silver"],48:["Cd","Cadmium"],49:["In","Indium"],50:["Sn","Tin"],
+    51:["Sb","Antimony"],52:["Te","Tellurium"],53:["I","Iodine"],54:["Xe","Xenon"],55:["Cs","Cesium"],
+    56:["Ba","Barium"],57:["La","Lanthanum"],58:["Ce","Cerium"],59:["Pr","Praseodymium"],60:["Nd","Neodymium"],
+    61:["Pm","Promethium"],62:["Sm","Samarium"],63:["Eu","Europium"],64:["Gd","Gadolinium"],65:["Tb","Terbium"],
+    66:["Dy","Dysprosium"],67:["Ho","Holmium"],68:["Er","Erbium"],69:["Tm","Thulium"],70:["Yb","Ytterbium"],
+    71:["Lu","Lutetium"],72:["Hf","Hafnium"],73:["Ta","Tantalum"],74:["W","Tungsten"],75:["Re","Rhenium"],
+    76:["Os","Osmium"],77:["Ir","Iridium"],78:["Pt","Platinum"],79:["Au","Gold"],80:["Hg","Mercury"],
+    81:["Tl","Thallium"],82:["Pb","Lead"],83:["Bi","Bismuth"],84:["Po","Polonium"],
+    85:["At","Astatine"],86:["Rn","Radon"],87:["Fr","Francium"],88:["Ra","Radium"],
+    89:["Ac","Actinium"],90:["Th","Thorium"],91:["Pa","Protactinium"],92:["U","Uranium"],
+    93:["Np","Neptunium"],94:["Pu","Plutonium"],95:["Am","Americium"]
+  };
+
+  // ---------- Nuclide data: [Z, A, flag]  flag 0 = stable, 1 = long-lived primordial (observationally stable) ----------
+  var RAW = [
+    [1,1,0],[1,2,0],
+    [2,3,0],[2,4,0],
+    [3,6,0],[3,7,0],
+    [4,9,0],
+    [5,10,0],[5,11,0],
+    [6,12,0],[6,13,0],
+    [7,14,0],[7,15,0],
+    [8,16,0],[8,17,0],[8,18,0],
+    [9,19,0],
+    [10,20,0],[10,21,0],[10,22,0],
+    [11,23,0],
+    [12,24,0],[12,25,0],[12,26,0],
+    [13,27,0],
+    [14,28,0],[14,29,0],[14,30,0],
+    [15,31,0],
+    [16,32,0],[16,33,0],[16,34,0],[16,36,0],
+    [17,35,0],[17,37,0],
+    [18,36,0],[18,38,0],[18,40,0],
+    [19,39,0],[19,40,1],[19,41,0],
+    [20,40,0],[20,42,0],[20,43,0],[20,44,0],[20,46,0],[20,48,1],
+    [21,45,0],
+    [22,46,0],[22,47,0],[22,48,0],[22,49,0],[22,50,0],
+    [23,50,1],[23,51,0],
+    [24,50,1],[24,52,0],[24,53,0],[24,54,0],
+    [25,55,0],
+    [26,54,0],[26,56,0],[26,57,0],[26,58,0],
+    [27,59,0],
+    [28,58,0],[28,60,0],[28,61,0],[28,62,0],[28,64,0],
+    [29,63,0],[29,65,0],
+    [30,64,0],[30,66,0],[30,67,0],[30,68,0],[30,70,0],
+    [31,69,0],[31,71,0],
+    [32,70,0],[32,72,0],[32,73,0],[32,74,0],[32,76,1],
+    [33,75,0],
+    [34,74,0],[34,76,0],[34,77,0],[34,78,0],[34,80,0],[34,82,1],
+    [35,79,0],[35,81,0],
+    [36,78,1],[36,80,0],[36,82,0],[36,83,0],[36,84,0],[36,86,0],
+    [37,85,0],[37,87,1],
+    [38,84,0],[38,86,0],[38,87,0],[38,88,0],
+    [39,89,0],
+    [40,90,0],[40,91,0],[40,92,0],[40,94,0],[40,96,1],
+    [41,93,0],
+    [42,92,0],[42,94,0],[42,95,0],[42,96,0],[42,97,0],[42,98,0],[42,100,1],
+    [44,96,0],[44,98,0],[44,99,0],[44,100,0],[44,101,0],[44,102,0],[44,104,0],
+    [45,103,0],
+    [46,102,0],[46,104,0],[46,105,0],[46,106,0],[46,108,0],[46,110,0],
+    [47,107,0],[47,109,0],
+    [48,106,0],[48,108,0],[48,110,0],[48,111,0],[48,112,0],[48,113,1],[48,114,0],[48,116,1],
+    [49,113,0],[49,115,1],
+    [50,112,0],[50,114,0],[50,115,0],[50,116,0],[50,117,0],[50,118,0],[50,119,0],[50,120,0],[50,122,0],[50,124,0],
+    [51,121,0],[51,123,0],
+    [52,120,0],[52,122,0],[52,123,1],[52,124,0],[52,125,0],[52,126,0],[52,128,1],[52,130,1],
+    [53,127,0],
+    [54,124,0],[54,126,0],[54,128,0],[54,129,0],[54,130,0],[54,131,0],[54,132,0],[54,134,1],[54,136,1],
+    [55,133,0],
+    [56,130,1],[56,132,1],[56,134,0],[56,135,0],[56,136,0],[56,137,0],[56,138,0],
+    [57,138,1],[57,139,0],
+    [58,136,0],[58,138,0],[58,140,0],[58,142,1],
+    [59,141,0],
+    [60,142,0],[60,143,0],[60,144,1],[60,145,0],[60,146,0],[60,148,0],[60,150,1],
+    [62,144,0],[62,147,1],[62,148,1],[62,149,1],[62,150,0],[62,152,0],[62,154,0],
+    [63,151,1],[63,153,0],
+    [64,152,1],[64,154,0],[64,155,0],[64,156,0],[64,157,0],[64,158,0],[64,160,1],
+    [65,159,0],
+    [66,156,0],[66,158,0],[66,160,0],[66,161,0],[66,162,0],[66,163,0],[66,164,0],
+    [67,165,0],
+    [68,162,0],[68,164,0],[68,166,0],[68,167,0],[68,168,0],[68,170,0],
+    [69,169,0],
+    [70,168,0],[70,170,0],[70,171,0],[70,172,0],[70,173,0],[70,174,0],[70,176,0],
+    [71,175,0],[71,176,1],
+    [72,174,1],[72,176,0],[72,177,0],[72,178,0],[72,179,0],[72,180,0],
+    [73,180,1],[73,181,0],
+    [74,180,1],[74,182,0],[74,183,0],[74,184,0],[74,186,1],
+    [75,185,0],[75,187,1],
+    [76,184,1],[76,186,1],[76,187,0],[76,188,0],[76,189,0],[76,190,0],[76,192,0],
+    [77,191,0],[77,193,0],
+    [78,190,1],[78,192,0],[78,194,0],[78,195,0],[78,196,0],[78,198,0],
+    [79,197,0],
+    [80,196,1],[80,198,0],[80,199,0],[80,200,0],[80,201,0],[80,202,0],[80,204,0],
+    [81,203,0],[81,205,0],
+    [82,204,1],[82,206,0],[82,207,0],[82,208,0],
+    [83,209,1],
+
+    // curated set of well-known radioactive isotopes (medical, dating, decay-chain, fuel-cycle)
+    [1,3,1],     // tritium
+    [4,7,1],     // Be-7
+    [6,14,1],    // C-14
+    [11,22,1],   // Na-22
+    [15,32,1],   // P-32
+    [16,35,1],   // S-35
+    [17,36,1],   // Cl-36
+    [27,60,1],   // Co-60
+    [38,90,1],   // Sr-90
+    [43,99,1],   // Tc-99
+    [53,125,1],  // I-125
+    [53,131,1],  // I-131
+    [55,137,1],  // Cs-137
+    [77,192,1],  // Ir-192
+    [84,210,1],  // Po-210
+    [86,222,1],  // Rn-222
+    [87,223,1],  // Fr-223
+    [88,226,1],  // Ra-226
+    [88,228,1],  // Ra-228
+    [89,227,1],  // Ac-227
+    [90,230,1],  // Th-230
+    [90,232,1],  // Th-232
+    [91,231,1],  // Pa-231
+    [92,233,1],  // U-233
+    [92,235,1],  // U-235
+    [92,238,1],  // U-238
+    [93,237,1],  // Np-237
+    [94,238,1],  // Pu-238
+    [94,239,1],  // Pu-239
+    [94,240,1],  // Pu-240
+    [95,241,1],  // Am-241
+    [95,243,1]   // Am-243
+  ];
+
+  // most abundant stable isotope of each element (natural abundance, restricted to isotopes
+  // flagged stable above — e.g. Bi has none here since Bi-209 is flagged radioactive)
+  var COMMON = [
+    [1,1],[2,4],[3,7],[4,9],[5,11],[6,12],[7,14],[8,16],[9,19],[10,20],
+    [11,23],[12,24],[13,27],[14,28],[15,31],[16,32],[17,35],[18,40],[19,39],[20,40],
+    [21,45],[22,48],[23,51],[24,52],[25,55],[26,56],[27,59],[28,58],[29,63],[30,64],
+    [31,69],[32,74],[33,75],[34,80],[35,79],[36,84],[37,85],[38,88],[39,89],[40,90],
+    [41,93],[42,98],[44,102],[45,103],[46,106],[47,107],[48,114],[49,113],[50,120],[51,121],
+    [52,126],[53,127],[54,132],[55,133],[56,138],[57,139],[58,140],[59,141],[60,142],
+    [62,152],[63,153],[64,158],[65,159],[66,164],[67,165],[68,166],[69,169],[70,174],
+    [71,175],[72,180],[73,181],[74,184],[75,185],[76,192],[77,193],[78,195],[79,197],
+    [80,202],[81,205],[82,208]
+  ];
+  var commonSet = {};
+  COMMON.forEach(function(p){ commonSet[p[0]+'-'+p[1]] = true; });
+
+  var DATA = RAW.map(function(d){
+    var z = d[0], a = d[1], flag = d[2];
+    var elInfo = ELEMENTS[z];
+    return {
+      z: z, a: a, n: a - z, flag: flag, sym: elInfo[0], name: elInfo[1],
+      common: !!commonSet[z+'-'+a]
+    };
+  });
+
+  // ---------- Layout constants ----------
+  var CELL = 16;
+  var MARGIN = { left: 46, right: 24, top: 24, bottom: 78 };
+  var ZMAX = 96, NMAX = 150;
+  var plotW = ZMAX * CELL;
+  var plotH = NMAX * CELL;
+  var VB_W = MARGIN.left + plotW + MARGIN.right;
+  var VB_H = MARGIN.top + plotH + MARGIN.bottom;
+
+  function xOf(z){ return MARGIN.left + z * CELL; }
+  function yOf(n){ return MARGIN.top + (NMAX - n) * CELL; }
+
+  var svg = document.getElementById('chart');
+  svg.setAttribute('viewBox', '0 0 ' + VB_W + ' ' + VB_H);
+
+  var NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs){
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  var gRoot = el('g', {id:'zoomGroup'});
+  svg.appendChild(gRoot);
+
+  var gGrid = el('g', {});
+  var gAxis = el('g', {});
+  var gPoints = el('g', {});
+  gRoot.appendChild(gGrid);
+  gRoot.appendChild(gAxis);
+  gRoot.appendChild(gPoints);
+
+  // background plot area
+  gGrid.appendChild(el('rect', {
+    x: MARGIN.left, y: MARGIN.top, width: plotW, height: plotH,
+    fill: 'none', stroke: 'var(--grid-strong)', 'stroke-width': 1.2
+  }));
+
+  // gridlines every 10
+  for (var zz = 0; zz <= ZMAX; zz += 10){
+    gGrid.appendChild(el('line', {x1:xOf(zz), y1:MARGIN.top, x2:xOf(zz), y2:MARGIN.top+plotH, class:'gridline'}));
+  }
+  for (var nn = 0; nn <= NMAX; nn += 10){
+    gGrid.appendChild(el('line', {x1:MARGIN.left, y1:yOf(nn), x2:MARGIN.left+plotW, y2:yOf(nn), class:'gridline'}));
+  }
+
+  // band-of-stability reference line: N = Z
+  var gBand = el('g', {});
+  gRoot.insertBefore(gBand, gPoints);
+
+  (function(){
+    // N = Z, from (0,0) until it exits the plot (at Z=NMAX if NMAX<ZMAX, else at Z=ZMAX)
+    var zEnd1 = Math.min(ZMAX, NMAX);
+    gBand.appendChild(el('line', {
+      x1:xOf(0), y1:yOf(0), x2:xOf(zEnd1), y2:yOf(zEnd1), class:'bandline'
+    }));
+    var lbl1 = el('text', {x:xOf(zEnd1)-6, y:yOf(zEnd1)-6, 'font-size':11, class:'bandlabel', 'text-anchor':'end'});
+    lbl1.textContent = 'N = Z';
+    gBand.appendChild(lbl1);
+  })();
+
+  // axis numeric ticks
+  for (var zt = 0; zt <= ZMAX; zt += 10){
+    var t1 = el('text', {x:xOf(zt), y:MARGIN.top+plotH+70, 'font-size':10, class:'axislabel', 'text-anchor':'middle'});
+    t1.textContent = zt; gAxis.appendChild(t1);
+  }
+  for (var nt = 0; nt <= NMAX; nt += 10){
+    var t2 = el('text', {x:MARGIN.left-8, y:yOf(nt)+3, 'font-size':10, class:'axislabel', 'text-anchor':'end'});
+    t2.textContent = nt; gAxis.appendChild(t2);
+  }
+  // axis titles
+  var xTitle = el('text', {x:MARGIN.left+plotW/2, y:VB_H-8, 'font-size':13, class:'axislabel', 'text-anchor':'middle', 'font-weight':'600'});
+  xTitle.textContent = 'Protons (Z)'; gAxis.appendChild(xTitle);
+  var yTitle = el('text', {x:16, y:MARGIN.top+plotH/2, 'font-size':13, class:'axislabel', 'text-anchor':'middle', 'font-weight':'600',
+    transform:'rotate(-90 16 '+(MARGIN.top+plotH/2)+')'});
+  yTitle.textContent = 'Neutrons (N)'; gAxis.appendChild(yTitle);
+
+  // element symbol labels along bottom, rotated
+  for (var ez = 1; ez <= 95; ez++){
+    var e2 = ELEMENTS[ez];
+    var lx = xOf(ez) + CELL/2;
+    var ly = MARGIN.top + plotH + 12;
+    var t3 = el('text', {x:lx, y:ly, 'font-size':9.5, class:'elemlabel', 'text-anchor':'end',
+      transform:'rotate(-90 '+lx+' '+ly+')'});
+    t3.textContent = e2[0];
+    gAxis.appendChild(t3);
+  }
+
+  // points
+  var SIZE = CELL * 0.72;
+  DATA.forEach(function(d){
+    var r = el('rect', {
+      x: xOf(d.z) - SIZE/2, y: yOf(d.n) - SIZE/2, width: SIZE, height: SIZE, rx: 2,
+      class: 'nuclide ' + (d.flag ? 'radioactive' : 'stable') + (d.common ? ' common' : ''),
+      'data-z': d.z, 'data-a': d.a, 'data-n': d.n, 'data-flag': d.flag
+    });
+    gPoints.appendChild(r);
+    d._el = r;
+  });
+
+  // ---------- Tooltip / selection ----------
+  var tooltip = document.getElementById('tooltip');
+  var stage = document.getElementById('stage');
+
+  function isoLabel(d){
+    return d.name + '-' + d.a;
+  }
+  function showTooltip(d, clientX, clientY){
+    var rectStage = stage.getBoundingClientRect();
+    var lx = clientX - rectStage.left + 14;
+    var ly = clientY - rectStage.top + 14;
+    tooltip.innerHTML =
+      '<span class="iso-name">' + isoLabel(d) + '</span>' +
+      '<sup>' + d.a + '</sup>' + d.sym + '  &middot;  Z=' + d.z + ', N=' + d.n +
+      '<br><span class="tag" style="background:' + (d.common ? 'var(--common)' : (d.flag ? 'var(--radioactive)' : 'var(--stable)')) + '">' +
+      (d.flag ? 'radioactive' : 'stable') + (d.common ? ' &middot; most abundant' : '') + '</span>';
+    tooltip.style.display = 'block';
+    // keep on-screen
+    var maxX = rectStage.width - 230, maxY = rectStage.height - 90;
+    if (lx > maxX) lx = clientX - rectStage.left - 230;
+    if (ly > maxY) ly = clientY - rectStage.top - 90;
+    tooltip.style.left = lx + 'px';
+    tooltip.style.top = ly + 'px';
+  }
+  function hideTooltip(){ tooltip.style.display = 'none'; }
+
+  var byKey = {};
+  DATA.forEach(function(d){ byKey[d.z+'-'+d.a] = d; });
+
+  svg.addEventListener('pointerover', function(e){
+    if (e.target.classList && e.target.classList.contains('nuclide')){
+      var z = +e.target.getAttribute('data-z'), a = +e.target.getAttribute('data-a');
+      var d = byKey[z+'-'+a];
+      if (d) showTooltip(d, e.clientX, e.clientY);
+    }
+  });
+  svg.addEventListener('pointermove', function(e){
+    if (e.target.classList && e.target.classList.contains('nuclide') && tooltip.style.display === 'block'){
+      var z = +e.target.getAttribute('data-z'), a = +e.target.getAttribute('data-a');
+      var d = byKey[z+'-'+a];
+      if (d) showTooltip(d, e.clientX, e.clientY);
+    }
+  });
+  svg.addEventListener('pointerout', function(e){
+    if (e.target.classList && e.target.classList.contains('nuclide')) hideTooltip();
+  });
+  svg.addEventListener('click', function(e){
+    if (e.target.classList && e.target.classList.contains('nuclide')){
+      var z = +e.target.getAttribute('data-z'), a = +e.target.getAttribute('data-a');
+      var d = byKey[z+'-'+a];
+      if (d) showTooltip(d, e.clientX, e.clientY);
+    }
+  });
+
+  // ---------- Zoom / pan ----------
+  var view = { x: 0, y: 0, scale: 1 };
+  function applyView(){
+    gRoot.setAttribute('transform', 'translate(' + view.x + ',' + view.y + ') scale(' + view.scale + ')');
+  }
+  function fitView(){
+    var rect = stage.getBoundingClientRect();
+    var sc = Math.min(rect.width / VB_W, rect.height / VB_H) * 0.96;
+    view.scale = sc;
+    view.x = (rect.width - VB_W * sc) / 2;
+    view.y = (rect.height - VB_H * sc) / 2;
+    applyView();
+  }
+
+  var pointers = {};
+  var dragging = false, lastX = 0, lastY = 0;
+  var pinchStartDist = 0, pinchStartScale = 1;
+
+  function dist(p1, p2){ return Math.hypot(p1.x-p2.x, p1.y-p2.y); }
+
+  stage.addEventListener('pointerdown', function(e){
+    stage.setPointerCapture(e.pointerId);
+    pointers[e.pointerId] = {x:e.clientX, y:e.clientY};
+    var ids = Object.keys(pointers);
+    if (ids.length === 1){
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      stage.classList.add('grabbing');
+    } else if (ids.length === 2){
+      dragging = false;
+      var p = ids.map(function(k){return pointers[k];});
+      pinchStartDist = dist(p[0], p[1]);
+      pinchStartScale = view.scale;
+    }
+  });
+  stage.addEventListener('pointermove', function(e){
+    if (!pointers[e.pointerId]) return;
+    pointers[e.pointerId] = {x:e.clientX, y:e.clientY};
+    var ids = Object.keys(pointers);
+    if (ids.length === 2){
+      var p = ids.map(function(k){return pointers[k];});
+      var d = dist(p[0], p[1]);
+      var rect = stage.getBoundingClientRect();
+      var cx = (p[0].x+p[1].x)/2 - rect.left, cy = (p[0].y+p[1].y)/2 - rect.top;
+      var newScale = Math.max(0.15, Math.min(14, pinchStartScale * (d / pinchStartDist)));
+      var wx = (cx - view.x) / view.scale, wy = (cy - view.y) / view.scale;
+      view.scale = newScale;
+      view.x = cx - wx * view.scale;
+      view.y = cy - wy * view.scale;
+      applyView();
+    } else if (dragging){
+      var dx = e.clientX - lastX, dy = e.clientY - lastY;
+      view.x += dx; view.y += dy;
+      lastX = e.clientX; lastY = e.clientY;
+      applyView();
+    }
+  });
+  function endPointer(e){
+    delete pointers[e.pointerId];
+    if (Object.keys(pointers).length < 2) pinchStartDist = 0;
+    if (Object.keys(pointers).length === 0){ dragging = false; stage.classList.remove('grabbing'); }
+  }
+  stage.addEventListener('pointerup', endPointer);
+  stage.addEventListener('pointercancel', endPointer);
+  stage.addEventListener('pointerleave', function(e){ if (e.target === stage) hideTooltip(); });
+
+  stage.addEventListener('wheel', function(e){
+    e.preventDefault();
+    var rect = stage.getBoundingClientRect();
+    var cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+    var factor = Math.exp(-e.deltaY * 0.0015);
+    var newScale = Math.max(0.15, Math.min(14, view.scale * factor));
+    var wx = (cx - view.x) / view.scale, wy = (cy - view.y) / view.scale;
+    view.scale = newScale;
+    view.x = cx - wx * view.scale;
+    view.y = cy - wy * view.scale;
+    applyView();
+  }, {passive:false});
+
+  document.getElementById('zoomIn').addEventListener('click', function(){ zoomStep(1.3); });
+  document.getElementById('zoomOut').addEventListener('click', function(){ zoomStep(1/1.3); });
+  function zoomStep(factor){
+    var rect = stage.getBoundingClientRect();
+    var cx = rect.width/2, cy = rect.height/2;
+    var newScale = Math.max(0.15, Math.min(14, view.scale * factor));
+    var wx = (cx - view.x) / view.scale, wy = (cy - view.y) / view.scale;
+    view.scale = newScale;
+    view.x = cx - wx * view.scale;
+    view.y = cy - wy * view.scale;
+    applyView();
+  }
+  document.getElementById('fitBtn').addEventListener('click', fitView);
+
+  window.addEventListener('resize', function(){ fitView(); });
+  fitView();
+
+  // ---------- Search ----------
+  var searchInput = document.getElementById('search');
+  var searchStatus = document.getElementById('searchStatus');
+  var symToZ = {}; var nameToZ = {};
+  Object.keys(ELEMENTS).forEach(function(z){
+    symToZ[ELEMENTS[z][0].toLowerCase()] = +z;
+    nameToZ[ELEMENTS[z][1].toLowerCase()] = +z;
+  });
+
+  function clearMatches(){
+    DATA.forEach(function(d){ d._el.classList.remove('matched'); d._el.classList.remove('dim'); });
+  }
+
+  function panToBounds(items){
+    if (!items.length) return;
+    var rect = stage.getBoundingClientRect();
+    var minZ = Math.min.apply(null, items.map(function(d){return d.z;})) - 2;
+    var maxZ = Math.max.apply(null, items.map(function(d){return d.z;})) + 2;
+    var minN = Math.min.apply(null, items.map(function(d){return d.n;})) - 2;
+    var maxN = Math.max.apply(null, items.map(function(d){return d.n;})) + 2;
+    var x1 = xOf(minZ), x2 = xOf(maxZ);
+    var y1 = yOf(maxN), y2 = yOf(minN);
+    var w = x2 - x1, h = y2 - y1;
+    var sc = Math.min(rect.width / w, rect.height / h, 9);
+    view.scale = sc;
+    view.x = rect.width/2 - (x1+x2)/2 * sc;
+    view.y = rect.height/2 - (y1+y2)/2 * sc;
+    applyView();
+  }
+
+  function runSearch(){
+    var q = searchInput.value.trim().toLowerCase();
+    clearMatches();
+    if (!q){ searchStatus.textContent = ''; return; }
+
+    var matches = [];
+    // patterns: "13c", "c-13", "c 13", "carbon-13", "carbon 13", "carbon", "c"
+    var m = q.match(/^(\d+)\s*[-]?\s*([a-z]+)$/) || q.match(/^([a-z]+)\s*[-]?\s*(\d+)$/);
+    var elToken = null, massToken = null;
+    if (m){
+      if (/^\d+$/.test(m[1])){ massToken = +m[1]; elToken = m[2]; }
+      else { elToken = m[1]; massToken = +m[2]; }
+    } else {
+      elToken = q;
+    }
+    var z = symToZ[elToken] !== undefined ? symToZ[elToken] : nameToZ[elToken];
+    if (z !== undefined){
+      matches = DATA.filter(function(d){ return d.z === z && (massToken == null || d.a === massToken); });
+    } else if (/^\d+$/.test(q)){
+      // bare number: try as mass number across all elements
+      var num = +q;
+      matches = DATA.filter(function(d){ return d.a === num; });
+    }
+
+    if (!matches.length){
+      searchStatus.textContent = 'No isotope matches "' + searchInput.value + '"';
+      return;
+    }
+    searchStatus.textContent = matches.length === 1
+      ? 'Found ' + isoLabel(matches[0]) + ' (Z=' + matches[0].z + ', N=' + matches[0].n + ')'
+      : 'Found ' + matches.length + ' matches — highlighted';
+    DATA.forEach(function(d){ d._el.classList.add('dim'); });
+    matches.forEach(function(d){ d._el.classList.remove('dim'); d._el.classList.add('matched'); });
+    panToBounds(matches);
+    if (matches.length === 1){
+      var rs = stage.getBoundingClientRect();
+      var cx = rs.left + rs.width/2, cy = rs.top + rs.height/2;
+      showTooltip(matches[0], cx, cy);
+    }
+  }
+
+  var searchTimer = null;
+  searchInput.addEventListener('input', function(){
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 180);
+  });
+  searchInput.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') runSearch();
+    if (e.key === 'Escape'){ searchInput.value=''; clearMatches(); searchStatus.textContent=''; hideTooltip(); }
+  });
+
+})();
+</script>
+</body>
+</html>
